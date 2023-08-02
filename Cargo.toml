@@ -19,3 +19,5 @@ path = "src/repl/main.rs"
 
 [dependencies]
 nom = "^7"
+anyhow = "^1.0"
+byteorder = "1"
