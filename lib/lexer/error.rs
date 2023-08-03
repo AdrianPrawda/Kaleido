@@ -11,12 +11,12 @@ pub enum ParseError {
 
 #[derive(Debug)]
 pub struct CharParseError {
-    data: u32
+    data: [u8; 4]
 }
 
 impl CharParseError {
-    pub fn new(c: u32) -> CharParseError {
-        CharParseError { data: c }
+    pub fn new(c: &[u8; 4]) -> CharParseError {
+        CharParseError { data: c.clone() }
     }
 }
 
@@ -53,7 +53,7 @@ impl fmt::Display for InvalidCharByteSequenceError {
 
 impl fmt::Display for CharParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Char sequence {:#06x} is not a valid UTF Char", self.data)
+        write!(f, "Byte sequence {:x?} is not a valid UTF-8 Char", self.data)
     }
 }
 
