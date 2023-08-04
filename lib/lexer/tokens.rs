@@ -22,6 +22,7 @@ pub enum Token {
     Minus,
     Div,
     Mult,
+    Modulo,
     Equal,
     Exp,
     NotEqual,
@@ -31,6 +32,7 @@ pub enum Token {
     LessThan,
     Not,
     Assign,
+    FunctionReturn,
 
     // statements
     If,

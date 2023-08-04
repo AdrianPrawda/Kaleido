@@ -27,6 +27,7 @@ syntax! {equal_operator, "==", Token::Equal}
 syntax! {not_equal_operator, "!=", Token::NotEqual}
 syntax! {exp_operator, "**", Token::Exp}
 syntax! {plus_operator, "+", Token::Plus}
+syntax! {modulo_operator, "%", Token::Modulo}
 syntax! {minus_operator, "-", Token::Minus}
 syntax! {mult_operator, "*", Token::Mult}
 syntax! {div_operator, "/", Token::Div}
@@ -36,6 +37,7 @@ syntax! {lte_operator, "<=", Token::LessThanEqual}
 syntax! {gt_operator, ">", Token::GreaterThan}
 syntax! {lt_operator, "<", Token::LessThan}
 syntax! {assign_operator, "=", Token::Assign}
+syntax! {function_return_operator, "->", Token::FunctionReturn}
 
 fn lex_operator(input: &[u8]) -> IResult<&[u8], Token> {
     alt((
@@ -43,6 +45,8 @@ fn lex_operator(input: &[u8]) -> IResult<&[u8], Token> {
         not_equal_operator,
         exp_operator,
         plus_operator,
+        modulo_operator,
+        function_return_operator,
         minus_operator,
         div_operator,
         mult_operator,
@@ -376,7 +380,7 @@ mod tests {
         Token::EOF,
     ]}
 
-    check_tokens! {test_operators, "+ - / * == ** != >= <= > < !", vec![
+    check_tokens! {test_operators, "+ - / * == ** != >= <= > < ! % ->", vec![
         Token::Plus,
         Token::Minus,
         Token::Div,
@@ -389,6 +393,8 @@ mod tests {
         Token::GreaterThan,
         Token::LessThan,
         Token::Not,
+        Token::Modulo,
+        Token::FunctionReturn,
         Token::EOF,
     ]}
 
@@ -482,10 +488,15 @@ mod tests {
     ]}
 
     // TODO: Add more 
-    check_tokens! {test_illegal, r#"" ''"#, vec![
+    check_tokens! {test_illegal, r#"" '' _"#, vec![
         Token::Illegal,
         Token::Illegal,
         Token::Illegal,
+        Token::Illegal,
+        Token::EOF,
+    ]}
+
+    check_tokens! {test_empty, "", vec![
         Token::EOF,
     ]}
 
@@ -525,5 +536,85 @@ mod tests {
         Token::BooleanOr,
         Token::EOF,
     ]}
+
+    // code sequence test
+    check_tokens! {test_code_sequence1, 
+        r#"
+        fn foo(bar: baz) -> int {
+            let a = 5 + 3;
+            let b = a * 0.5;
+            return b;
+        }
+        "#, 
+        vec![
+        Token::Function,
+        token_ident! {"foo"},
+        Token::LParenthesis,
+        token_ident! {"bar"},
+        Token::Colon,
+        token_ident! {"baz"},
+        Token::RParenthesis,
+        Token::FunctionReturn,
+        token_ident! {"int"},
+        Token::LBrace,
+        Token::Let,
+        token_ident! {"a"},
+        Token::Assign,
+        Token::NumericLiteral(5),
+        Token::Plus,
+        Token::NumericLiteral(3),
+        Token::Semicolon,
+        Token::Let,
+        token_ident! {"b"},
+        Token::Assign,
+        token_ident! {"a"},
+        Token::Mult,
+        Token::DecimalLiteral(0.5),
+        Token::Semicolon,
+        Token::Return,
+        token_ident! {"b"},
+        Token::Semicolon,
+        Token::RBrace,
+        Token::EOF,
+    ]}
+
+    check_tokens! {test_code_sequence2, 
+        r#"
+        while(a >= 20) {
+            a = a + 2.0;
+            if (b/a <= 1.0) {
+                break;
+            }
+        }
+        "#, 
+        vec![
+            Token::While,
+            Token::LParenthesis,
+            token_ident! {"a"},
+            Token::GreaterThanEqual,
+            Token::NumericLiteral(20),
+            Token::RParenthesis,
+            Token::LBrace,
+            token_ident! {"a"},
+            Token::Assign,
+            token_ident! {"a"},
+            Token::Plus,
+            Token::DecimalLiteral(2.0),
+            Token::Semicolon,
+            Token::If,
+            Token::LParenthesis,
+            token_ident! {"b"},
+            Token::Div,
+            token_ident! {"a"},
+            Token::LessThanEqual,
+            Token::DecimalLiteral(1.0),
+            Token::RParenthesis,
+            Token::LBrace,
+            Token::Break,
+            Token::Semicolon,
+            Token::RBrace,
+            Token::RBrace,
+            Token::EOF,
+        ]}
 
 }
