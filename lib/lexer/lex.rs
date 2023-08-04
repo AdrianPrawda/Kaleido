@@ -4,12 +4,12 @@ use crate::lexer::tokens::*;
 use crate::lexer::error::*;
 
 use nom::branch::alt;
+use nom::character::complete::one_of;
+use nom::combinator::peek;
 use nom::combinator::{map, map_res, recognize, opt};
-use nom::bytes::complete::{tag, take, take_while1};
+use nom::bytes::complete::{tag, take};
 use nom::*;
-use nom::multi::many_m_n;
 use nom::multi::{many0, many1};
-use nom::sequence::preceded;
 use nom::sequence::{delimited, pair, tuple};
 use nom::character::complete::{char, alpha1, alphanumeric1, digit1, multispace0};
 
@@ -111,42 +111,37 @@ fn lex_logic_operation(input: &[u8]) -> IResult<&[u8], Token> {
 
 // strings
 
-fn non_escaped_char(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    take_while1(|i| -> bool {
-        i >= 0x20 && (i != 0x22) && (i != 0x27) && (i != 0x5C)
-    })(input)
-}
-
-fn escaped_char(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(
-        preceded(
-            char('\\'),
-            alt((
-                char('\''),
-                char('"'),
-                char('\\'),
-            ))
-        )
-    )(input)
-}
-
-fn string_body(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(
-        many0(
-            alt((
-                non_escaped_char,
-                escaped_char
-            ))
-        )
-    )(input)
+fn concat_slice_and_vec(s: &[u8], v: Vec<u8>) -> Vec<u8> {
+    let mut vec_out = s.to_vec();
+    vec_out.extend(&v);
+    vec_out
 }
 
 fn convert_slice_to_utf8(s: &[u8]) -> Result<String, ParseError> {
     str::from_utf8(s).map(|s| s.to_owned()).map_err(|e| e.into())
 }
 
+fn string_body(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
+    let (i1, c1) = take(1usize)(input)?;
+    match c1.as_bytes() {
+        b"\"" => Ok((input, vec![])),
+        b"\\" => {
+            match peek(one_of(r#""'\"#)).parse(i1) {
+                Ok(_) => {
+                    let (i2, c2) = take(1usize)(i1)?;
+                    string_body(i2).map(|(s, done)| (s, concat_slice_and_vec(c2, done)))
+                },
+                Result::Err(e) => Err(e),
+            }
+        }
+        c => string_body(i1).map(|(s, done)| (s, concat_slice_and_vec(c, done))),
+    }
+}
+
 fn input_to_string(input: &[u8]) -> IResult<&[u8], String> {
-    map_res(delimited(char('"'), string_body, char('"')), |s| convert_slice_to_utf8(s))(input)
+    map_res(delimited(char('"'), string_body, char('"')), |s| {
+        convert_slice_to_utf8(s.as_slice())
+    })(input)
 }
 
 fn lex_string(input: &[u8]) -> IResult<&[u8], Token> {
@@ -170,20 +165,27 @@ fn convert_slice_to_char(s: &[u8]) -> Result<char, ParseError> {
     Ok(chars[0])
 }
 
-fn char_body(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    recognize(
-        many_m_n(
-            1, 
-            4, 
-            alt((
-                non_escaped_char,
-                escaped_char,
-            )))
-    )(input)
+fn char_body(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
+    let (i1, c1) = take(1usize)(input)?;
+    match c1.as_bytes() {
+        b"'"  => Ok((input, vec![])),
+        b"\\" => {
+            match peek(one_of(r#""'\"#)).parse(i1) {
+                Ok(_) => {
+                    let (i2, c2) = take(1usize)(i1)?;
+                    char_body(i2).map(|(s, done)| (s, concat_slice_and_vec(c2, done)))
+                },
+                Result::Err(e) => Err(e),
+            }
+        }
+        c => char_body(i1).map(|(s, done)| (s, concat_slice_and_vec(c, done)))
+    }
 }
 
 fn input_to_char(input: &[u8]) -> IResult<&[u8], char> {
-    map_res(delimited(tag("'"), char_body, tag("'")), |s| convert_slice_to_char(s))(input)
+    map_res(delimited(tag("'"), char_body, tag("'")), |s| {
+        convert_slice_to_char(s.as_slice())
+    })(input)
 }
 
 fn lex_char(input: &[u8]) -> IResult<&[u8], Token> {
@@ -423,9 +425,8 @@ mod tests {
         Token::EOF,
     ]}
 
-    // TODO: add escaped strings
     check_tokens! {test_strings, 
-        r#""foo" "BaR" "bAZ" "Äpfel" "entrée" "I ❤ Coffee" "2\"""#,
+        r#""foo" "BaR" "bAZ" "Äpfel" "entrée" "I ❤ Coffee" "22" "5\'2\"" "10 \\ 5 = 5" "" "Straße""#,
         vec![
         token_string! {"foo"},
         token_string! {"BaR"},
@@ -433,18 +434,26 @@ mod tests {
         token_string! {"Äpfel"},
         token_string! {"entrée"},
         token_string! {"I ❤ Coffee"},
-        token_string! {r#"2""#},
+        token_string! {"22"},
+        token_string! {"5\'2\""},
+        token_string! {"10 \\ 5 = 5"},
+        token_string! {""},
+        token_string! {"Straße"},
         Token::EOF,
     ]}
 
     check_tokens! {test_char,
-        r#"'a' 'b' 'c' '❤' '\''"#,
+        r#"'a' 'b' 'c' '❤' '\'' '\"' '\\' '8' 'ß'"#,
         vec![
         Token::CharLiteral('a'),
         Token::CharLiteral('b'),
         Token::CharLiteral('c'),
         Token::CharLiteral('❤'),
         Token::CharLiteral('\''),
+        Token::CharLiteral('"'),
+        Token::CharLiteral('\\'),
+        Token::CharLiteral('8'),
+        Token::CharLiteral('ß'),
         Token::EOF,
     ]}
 
@@ -473,7 +482,9 @@ mod tests {
     ]}
 
     // TODO: Add more 
-    check_tokens! {test_illegal, "\"", vec![
+    check_tokens! {test_illegal, r#"" ''"#, vec![
+        Token::Illegal,
+        Token::Illegal,
         Token::Illegal,
         Token::EOF,
     ]}
@@ -488,7 +499,7 @@ mod tests {
         Token::EOF,
     ]}
 
-    // sequence tests
+    // mixed sequence tests
 
     check_tokens! {test_mixed_numbers, "11 1.34 -4 -2.2 88 4.4 -17 2 1.44", vec![
         Token::NumericLiteral(11),
