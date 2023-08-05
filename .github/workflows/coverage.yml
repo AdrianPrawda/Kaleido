@@ -20,8 +20,5 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: tests
       - name: Determine coverage
         run: cargo llvm-cov --all-features --workspace
-        working-directory: tests
