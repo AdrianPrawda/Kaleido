@@ -1,0 +1,29 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install Rust
+      run: rustup toolchain install stable --profile minimal --no-self-update
+    - uses: Swatinem/rust-cache@v2
+    - uses: ouzi-dev/commit-status-updater@v2
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
+    - if: always()
+      uses: ouzi-dev/commit-status-updater@v2
+      with:
+        status: "${{ job.status }}"
